@@ -47,5 +47,5 @@ if __name__ == "__main__":
     print(f"\nPyMOL command binding pocket residues:\n{pymol_selection}")
 
     residues = f" ".join([str(i.resid) for i in pocket.residues])
-    ndx_selection = f'a N CA C O & r {residues} | 13 & ! a H*'
-    print(f"\nNDX command to select ligand heavy atoms and the pocket backbone:\n{ndx_selection}")
+    ndx_selection = f'a N CA C O & r {residues}'
+    print(f"\nNDX command to select the pocket backbone:\n{ndx_selection}")

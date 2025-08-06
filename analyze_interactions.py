@@ -164,7 +164,7 @@ if __name__ == "__main__":
     simulation_dir = "/home/bioc1870/SLCO2A1_simulations/"
     gro_files = [f"{simulation_dir}{system}/production/rep_1/md.gro" for system in systems]
     tpr_files = [f"{simulation_dir}{system}/production/rep_1/md_system.tpr" for system in systems]
-    xtc_files = [f"{simulation_dir}{system}/analysis/Clustering/md_all_center.xtc" for system in systems]
+    xtc_files = [f"{simulation_dir}{system}/analysis/md_all_center.xtc" for system in systems]
 
     for gro_file, tpr_file, xtc_file, system in zip(gro_files, tpr_files, xtc_files, systems):
         print(f"Processing {system} ...")
