@@ -1,10 +1,12 @@
 import os
+import sys
 import numpy as np
 import pandas as pd
 import MDAnalysis as mda
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import prolif as plf
+from tqdm import tqdm
 from prolif import fingerprint, molecule
 from MDAnalysis.analysis import contacts
 from matplotlib import rc
@@ -210,3 +212,15 @@ if __name__ == "__main__":
         fp.plot_barcode()
         output_file = f"results/{ligand_name}/{ligand_name}_barcode.png"
         plt.savefig(output_file, dpi=600, bbox_inches="tight")
+
+        # Step 5. Arg561-Glu78 Salt-bridge analysis
+        basic_residue = u.select_atoms("resname ARG and resid 561 and (name NH* NZ)")
+        acidic_residue = u.select_atoms("resname GLU and resid 78 and (name OE* OD*)")
+        t_list, contact_list = [], []
+        for ts in tqdm(u.trajectory, desc=f"computing contacts", total=len(u.trajectory), file=sys.__stderr__):
+            dist = contacts.distance_array(basic_residue.positions, acidic_residue.positions)
+            t_list.append(ts.frame)
+            contact_list.append(contacts.contact_matrix(dist, radius=4.5).sum())
+
+        contact_list = np.array(contact_list)
+        print(f"Percentage of frames with Arg561-Glu78 salt-bridge: {np.sum(contact_list > 0) / len(contact_list) * 100:.2f}%")
