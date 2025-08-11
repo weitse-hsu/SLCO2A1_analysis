@@ -225,8 +225,8 @@ def plot_interaction_frequencies(df, output_file):
 if __name__ == "__main__":
     t0 = time.time()
 
-    sys.stdout = Logger("interaction_analysis.log")
-    sys.stderr = Logger("interaction_analysis.log")
+    sys.stdout = Logger("results/interaction_analysis.log")
+    sys.stderr = Logger("results/interaction_analysis.log")
 
     rc('font', **{
         'family': 'sans-serif',
@@ -240,10 +240,10 @@ if __name__ == "__main__":
 
     systems = [
         "RatSLCO2A1_P2E",
-        "RatSLCO2A1_FEN",
-        "RatSLCO2A1_TCW",
         "RatSLCO2A1_ZLK",
         "RatSLCO2A1_LSN",
+        "RatSLCO2A1_FEN",
+        "RatSLCO2A1_TCW",
     ]
     ligand_names = [system.split('_')[-1] for system in systems]
 
@@ -314,7 +314,7 @@ if __name__ == "__main__":
 
         hydrophobic_cols = [col for col in df.columns if col[protein_level].upper() in hydrophobic_band and col[interaction_level] == "Hydrophobic"]
         p_hydrophobic = df[hydrophobic_cols].any(axis=1).mean() * 100
-        print(f"The ligand had hydrophobic interactions with the hydrophobic band {p_hydrophobic:.2f} of the frames.")
+        print(f"The ligand had hydrophobic interactions with the hydrophobic band {p_hydrophobic:.2f}% of the frames.")
 
         final_df = summarize_interactions(df, freq_threshold=0)
         interaction_565_dict = final_df[final_df.index == "Trp565"].to_dict()
