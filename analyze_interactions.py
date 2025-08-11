@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import numpy as np
 import pandas as pd
 import MDAnalysis as mda
@@ -7,7 +8,9 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import prolif as plf
 from tqdm import tqdm
-from prolif import fingerprint, molecule
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+from prolif import fingerprint
 from MDAnalysis.analysis import contacts
 from matplotlib import rc
 
@@ -28,14 +31,8 @@ def summarize_interactions(df, freq_threshold=0.5):
     final_df : pd.DataFrame
         A DataFrame summarizing the interaction frequencies for each ligand-residue pair.
     """
-    # 1. Simplify ligand and protein names by removing possible chain IDs, e.g. "LIG.A" -> "LIG"
-    new_ligand_levels = df.columns.levels[df.columns.names.index('ligand')].map(lambda x: x.split('.')[0])
-    new_protein_levels = df.columns.levels[df.columns.names.index('protein')].map(lambda x: x.split('.')[0])
-    df.columns = df.columns.set_levels(new_ligand_levels, level='ligand')
-    df.columns = df.columns.set_levels(new_protein_levels, level='protein')
-
-    # 2. Identify interactions that occur in more than freq_threshold fraction of frames
-    assert 0 < freq_threshold < 1, "Frequency threshold must be between 0 and 1."
+    # 1. Identify interactions that occur in more than freq_threshold fraction of frames
+    assert 0 <= freq_threshold <= 1, "Frequency threshold must be between 0 and 1."
     freq_interactions = (
         df.T.groupby(level=["ligand", "protein"])
         .sum()
@@ -47,7 +44,7 @@ def summarize_interactions(df, freq_threshold=0.5):
         .squeeze()
     )
 
-    # 3. Create a dictionary of interaction frequencies for each ligand-residue pair and convert it to a DataFrame
+    # 2. Create a dictionary of interaction frequencies for each ligand-residue pair and convert it to a DataFrame
     interaction_dict = {}
     for ligand, residue in freq_interactions.index:
         subset = df.xs(residue, level="protein", axis=1)
@@ -58,7 +55,7 @@ def summarize_interactions(df, freq_threshold=0.5):
     summary_df.index.names = ["Ligand", "Residue"]
     summary_df = summary_df.fillna(0)
 
-    # 4. Add "Any interaction" column
+    # 3. Add "Any interaction" column
     ligands = freq_interactions.index.get_level_values("ligand").unique()  # should be only one ligand
     any_interaction = freq_interactions.to_frame(name=(ligands[0], "Any interaction"))
     any_interaction.columns = pd.MultiIndex.from_tuples(any_interaction.columns, names=["ligand", "interaction"])
@@ -71,7 +68,7 @@ def summarize_interactions(df, freq_threshold=0.5):
     interaction_cols = interaction_cols.intersection(full_df.columns)  # Get interactions occurring in the full_df
     full_df = full_df[interaction_cols]
 
-    # 5. Format the DataFrame for easier readability
+    # 4. Format the DataFrame for easier readability
     final_df = full_df.copy()
     final_df.columns = final_df.columns.droplevel("ligand")
     final_df.index = final_df.index.get_level_values(1)
@@ -111,8 +108,12 @@ def plot_interaction_frequencies(df, output_file):
     Plots the interaction frequencies for a given DataFrame and saves the figure to the specified output file.
     """
     # Assign colors to different interaction types
-    interaction_types = fingerprint.Fingerprint.list_available()
-    colors = {i : plt.cm.tab20(i) for i in range(len(interaction_types))}
+    interaction_types = [
+        "Any interaction", "Hydrophobic", "VdW contact", "HB acceptor", "HB donor", 
+        "Cation-Pi", "Pi-cation", "Pi-stacking", "Edge-to-face", "Face-to-face",
+        "Metal receptor", "Metal donor", "XB acceptor", "XB donor"
+    ]
+    colors = {interaction: plt.cm.tab20(i) for i, interaction in enumerate(interaction_types)}
     colors["Any interaction"] = "#0B84A5"
     
     # Overwrite a few with my favorites :)
@@ -142,6 +143,7 @@ def plot_interaction_frequencies(df, output_file):
     plt.savefig(output_file, dpi=600, bbox_inches="tight")
 
 if __name__ == "__main__":
+    t0 = time.time()
     rc('font', **{
         'family': 'sans-serif',
         'sans-serif': ['DejaVu Sans'],
@@ -154,10 +156,10 @@ if __name__ == "__main__":
 
     systems = [
         "RatSLCO2A1_P2E",
-        # "RatSLCO2A1_FEN",
-        # "RatSLCO2A1_TCW",
-        # "RatSLCO2A1_ZLK",
-        # "RatSLCO2A1_LSN",
+        "RatSLCO2A1_FEN",
+        "RatSLCO2A1_TCW",
+        "RatSLCO2A1_ZLK",
+        "RatSLCO2A1_LSN",
     ]
 
     # We need to GRO files just to get the correct residue numbering
@@ -166,8 +168,10 @@ if __name__ == "__main__":
     tpr_files = [f"{simulation_dir}{system}/production/rep_1/md_system.tpr" for system in systems]
     xtc_files = [f"{simulation_dir}{system}/analysis/md_all_center.xtc" for system in systems]
 
+    salt_bridge_percentage = []
+
     for gro_file, tpr_file, xtc_file, system in zip(gro_files, tpr_files, xtc_files, systems):
-        print(f"Processing {system} ...")
+        print(f"\nProcessing {system} ...")
         assert os.path.exists(gro_file), f"File {gro_file} does not exist."
         assert os.path.exists(tpr_file), f"File {tpr_file} does not exist."
         assert os.path.exists(xtc_file), f"File {xtc_file} does not exist."
@@ -187,7 +191,10 @@ if __name__ == "__main__":
             df = fp.to_dataframe()
         else:
             print(f"Starting IFP calculation for {system}...")
-            ligand_sel = u.select_atoms(f"resname {ligand_name}")
+            if ligand_name not in ['FEN', 'LSN']:
+                ligand_sel = u.select_atoms(f"resname {ligand_name}")
+            else:
+                ligand_sel = u.select_atoms(f"resname {ligand_name} and not name LP*")
             protein_sel = u.select_atoms("protein and byres around 20.0 group ligand", ligand=ligand_sel)
             ligand_sel.chainIDs = np.array(['' for i in range(len(ligand_sel.chainIDs))])
             protein_sel.chainIDs = np.array(['' for i in range(len(protein_sel.chainIDs))])
@@ -201,9 +208,44 @@ if __name__ == "__main__":
             df = fp.to_dataframe()
             df.to_csv(f"results/{ligand_name}/{ligand_name}_ifp_all.tsv", sep="\t", index=False)
 
-        # Step 3. Plot the interaction frequencies
+        # Step 3. Simplify ligand and protein names by removing possible chain IDs, e.g. "LIG.A" -> "LIG"
+        new_ligand_levels = df.columns.levels[df.columns.names.index('ligand')].map(lambda x: x.split('.')[0])
+        new_protein_levels = df.columns.levels[df.columns.names.index('protein')].map(lambda x: x.split('.')[0])
+        df.columns = df.columns.set_levels(new_ligand_levels, level='ligand')
+        df.columns = df.columns.set_levels(new_protein_levels, level='protein')
+
+        # Step 4. Some specific interactions
+        hydrophobic_band = ['ASN371', 'MET379', 'HSD533', 'ARG561', 'PHE557', 'TRP565']
+        ligand_level = df.columns.names.index("ligand")
+        protein_level = df.columns.names.index("protein")
+        interaction_level = df.columns.names.index("interaction")
+        new_ligand_levels = df.columns.levels[ligand_level].map(lambda x: x.split('.')[0])
+        new_protein_levels = df.columns.levels[protein_level].map(lambda x: x.split('.')[0])
+        df.columns = df.columns.set_levels(new_ligand_levels, level='ligand')
+        df.columns = df.columns.set_levels(new_protein_levels, level='protein')
+        
+        any_interaction_cols = [col for col in df.columns if col[protein_level].upper() in hydrophobic_band]
+        p_any = df[any_interaction_cols].any(axis=1).mean() * 100
+        print(f"The ligand interacted with the hydrophobic band {p_any:.2f}% of the frames.")
+
+        hydrophobic_cols = [col for col in df.columns if col[protein_level].upper() in hydrophobic_band and col[interaction_level] == "Hydrophobic"]
+        p_hydrophobic = df[hydrophobic_cols].any(axis=1).mean() * 100
+        print(f"The ligand had hydrophobic interactions with the hydrophobic band {p_hydrophobic:.2f} of the frames.")
+
+        final_df = summarize_interactions(df, freq_threshold=0)
+        interaction_565_dict = final_df[final_df.index == "Trp565"].to_dict()
+        print('Interaction with Trp565:')
+        for key in interaction_565_dict:
+            print(f"  - {key}: {interaction_565_dict[key]['Trp565']:.2f}%")
+
+        # hydrophobic_band = ['Asn371', 'Met379', 'His533', 'Arg561', 'Phe557', 'Trp565']
+        # hydrophobic_band_df = final_df[final_df.index.isin(hydrophobic_band)]
+        # print()
+        # print(hydrophobic_band_df)
+
+        # Step 3. Plot the frequencies of the interactions that occur in more than 50% of the frames
         print("Plotting interaction frequencies...")
-        final_df = summarize_interactions(df)
+        final_df = summarize_interactions(df, freq_threshold=0.5)
         output_file = f"results/{ligand_name}/{ligand_name}_interaction_frequencies.png"
         plot_interaction_frequencies(final_df, output_file)
 
@@ -223,4 +265,19 @@ if __name__ == "__main__":
             contact_list.append(contacts.contact_matrix(dist, radius=4.5).sum())
 
         contact_list = np.array(contact_list)
-        print(f"Percentage of frames with Arg561-Glu78 salt-bridge: {np.sum(contact_list > 0) / len(contact_list) * 100:.2f}%")
+        p_salt_bridge = np.sum(contact_list > 0) / len(contact_list) * 100
+        salt_bridge_percentage.append(p_salt_bridge)
+        print(f"Percentage of frames with Arg561-Glu78 salt-bridge: {p_salt_bridge:.2f}%")
+
+    # Analysis across systems
+    salt_bridge_percentage = np.array(salt_bridge_percentage)
+    plt.figure()
+    plt.bar(systems, salt_bridge_percentage)
+    plt.ylim(0, 100)
+    plt.ylabel("Percentage of frames with Arg561-Glu78 salt-bridge")
+    plt.xticks(rotation=45, ha="center")
+    plt.grid()
+    plt.tight_layout()
+    plt.savefig("salt_bridge_percentage.png", dpi=600, bbox_inches="tight")
+
+    print(f"\nElapsed time: {time.time() - t0:.2f} seconds")    
