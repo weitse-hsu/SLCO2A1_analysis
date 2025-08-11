@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import datetime
 import numpy as np
 import pandas as pd
 import MDAnalysis as mda
@@ -13,6 +14,85 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 from prolif import fingerprint
 from MDAnalysis.analysis import contacts
 from matplotlib import rc
+
+
+class Logger:
+    """
+    A logger class that redirects the STDOUT and STDERR to a specified output file while
+    preserving the output on screen. This is useful for logging terminal output to a file
+    for later analysis while still seeing the output in real-time during execution.
+
+    Parameters
+    ----------
+    logfile : str
+        The file path of which the standard output and standard error should be logged.
+
+    Attributes
+    ----------
+    terminal : :code:`io.TextIOWrapper` object
+        The original standard output object, typically :code:`sys.stdout`.
+    log : :code:`io.TextIOWrapper` object
+        File object used to log the output in append mode.
+    """
+
+    def __init__(self, logfile):
+        self.terminal = sys.stdout
+        self.log = open(logfile, "a")
+
+    def write(self, message):
+        """
+        Writes a message to the terminal and to the log file.
+
+        Parameters
+        ----------
+        message : str
+            The message to be written to STDOUT and the log file.
+        """
+        self.terminal.write(message)
+        self.log.write(message)
+        self.log.flush()  # Ensure the message is written immediately
+
+    def flush(self):
+        """
+        This method is needed for Python 3 compatibility. This handles the flush command by doing nothing.
+        Some extra behaviors may be specified here.
+        """
+        # self.terminal.log()
+        pass
+
+def format_time(t):
+    """
+    Converts time in seconds to a more readable format.
+
+    Parameters
+    ----------
+    t : float
+        The time in seconds.
+
+    Returns
+    -------
+    t_str : str
+        A string representing the time duration in a format of "X hour(s) Y minute(s) Z second(s)", adjusting the units
+        as necessary based on the input duration, e.g., 1 hour(s) 0 minute(s) 0 second(s) for 3600 seconds and
+        15 minute(s) 30 second(s) for 930 seconds.
+    """
+    hh_mm_ss = str(datetime.timedelta(seconds=t)).split(":")
+
+    if "day" in hh_mm_ss[0]:
+        # hh_mm_ss[0] will contain "day" and cannot be converted to float
+        hh, mm, ss = hh_mm_ss[0], float(hh_mm_ss[1]), float(hh_mm_ss[2])
+        t_str = f"{hh} hour(s) {mm:.0f} minute(s) {ss:.0f} second(s)"
+    else:
+        hh, mm, ss = float(hh_mm_ss[0]), float(hh_mm_ss[1]), float(hh_mm_ss[2])
+        if hh == 0:
+            if mm == 0:
+                t_str = f"{ss:.1f} second(s)"
+            else:
+                t_str = f"{mm:.0f} minute(s) {ss:.0f} second(s)"
+        else:
+            t_str = f"{hh:.0f} hour(s) {mm:.0f} minute(s) {ss:.0f} second(s)"
+
+    return t_str
 
 def summarize_interactions(df, freq_threshold=0.5):
     """
@@ -144,6 +224,10 @@ def plot_interaction_frequencies(df, output_file):
 
 if __name__ == "__main__":
     t0 = time.time()
+
+    sys.stdout = Logger("interaction_analysis.log")
+    sys.stderr = Logger("interaction_analysis.log")
+
     rc('font', **{
         'family': 'sans-serif',
         'sans-serif': ['DejaVu Sans'],
@@ -161,6 +245,7 @@ if __name__ == "__main__":
         "RatSLCO2A1_ZLK",
         "RatSLCO2A1_LSN",
     ]
+    ligand_names = [system.split('_')[-1] for system in systems]
 
     # We need to GRO files just to get the correct residue numbering
     simulation_dir = "/home/bioc1870/SLCO2A1_simulations/"
@@ -170,13 +255,12 @@ if __name__ == "__main__":
 
     salt_bridge_percentage = []
 
-    for gro_file, tpr_file, xtc_file, system in zip(gro_files, tpr_files, xtc_files, systems):
+    for gro_file, tpr_file, xtc_file, system, ligand_name in zip(gro_files, tpr_files, xtc_files, systems, ligand_names):
         print(f"\nProcessing {system} ...")
         assert os.path.exists(gro_file), f"File {gro_file} does not exist."
         assert os.path.exists(tpr_file), f"File {tpr_file} does not exist."
         assert os.path.exists(xtc_file), f"File {xtc_file} does not exist."
 
-        ligand_name = system.split('_')[-1]
         os.makedirs(f"results/{ligand_name}", exist_ok=True)
 
         # Step 1. Load the MD trajectory into an MDAnalysis universe
@@ -274,10 +358,10 @@ if __name__ == "__main__":
     plt.figure()
     plt.bar(systems, salt_bridge_percentage)
     plt.ylim(0, 100)
-    plt.ylabel("Percentage of frames with Arg561-Glu78 salt-bridge")
+    plt.ylabel("Occurrence of Arg561-Glu78 salt-bridge (%)")
     plt.xticks(rotation=45, ha="center")
     plt.grid()
     plt.tight_layout()
-    plt.savefig("salt_bridge_percentage.png", dpi=600, bbox_inches="tight")
+    plt.savefig("results/salt_bridge_percentage.png", dpi=600, bbox_inches="tight")
 
-    print(f"\nElapsed time: {time.time() - t0:.2f} seconds")    
+    print(f"\nTime elapsed: {format_time(time.time() - t0)}.")
