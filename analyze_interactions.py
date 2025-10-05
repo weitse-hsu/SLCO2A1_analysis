@@ -277,7 +277,7 @@ if __name__ == "__main__":
     tpr_files = [f"{simulation_dir}{system}/production/rep_1/md_system.tpr" for system in systems]
     xtc_files = [f"{simulation_dir}{system}/analysis/md_all_center.xtc" for system in systems]
 
-    salt_bridge_percentage = []
+    salt_bridge_percentage_avg, salt_bridge_percentage_std = [], []
 
     for gro_file, tpr_file, xtc_file, system, ligand_name, ligand_resname in zip(gro_files, tpr_files, xtc_files, systems, ligand_names, ligand_resnames):
         print(f"\nProcessing {system} ...")
@@ -366,24 +366,26 @@ if __name__ == "__main__":
         # Step 5. Arg561-Glu78 Salt-bridge analysis
         basic_residue = u.select_atoms("resname ARG and resid 561 and (name NH* NZ)")
         acidic_residue = u.select_atoms("resname GLU and resid 78 and (name OE* OD*)")
-        t_list, contact_list = [], []
-        for ts in tqdm(u.trajectory, desc=f"computing contacts", total=len(u.trajectory), file=sys.__stderr__):
-            dist = contacts.distance_array(basic_residue.positions, acidic_residue.positions)
-            t_list.append(ts.frame)
-            contact_list.append(contacts.contact_matrix(dist, radius=4.5).sum())
-
-        contact_list = np.array(contact_list)
-        p_salt_bridge = np.sum(contact_list > 0) / len(contact_list) * 100
-        salt_bridge_percentage.append(p_salt_bridge)
-        print(f"Percentage of frames with Arg561-Glu78 salt-bridge: {p_salt_bridge:.2f}%")
+        percentages = []  # This should contain 3 values for each of the 3 replicates
+        for i in range(3):
+            contact_list = []
+            for ts in u.trajectory[i*5000:(i+1)*5000]:
+                dist = contacts.distance_array(basic_residue.positions, acidic_residue.positions)
+                contact_list.append(contacts.contact_matrix(dist, radius=4.5).sum())
+            contact_list = np.array(contact_list)
+            percentages.append(np.sum(contact_list > 0) / len(contact_list) * 100)
+        salt_bridge_percentage_avg.append(np.mean(percentages))
+        salt_bridge_percentage_std.append(np.std(percentages))
+        print(f"Average percentage of frames with Arg561-Glu78 salt-bridge across replicates: {np.mean(percentages):.2f}% ± {np.std(percentages):.2f}%")
 
     # Analysis across systems
-    salt_bridge_percentage = np.array(salt_bridge_percentage)
     plt.figure()
-    plt.bar(systems, salt_bridge_percentage)
+    salt_bridge_percentage_avg = np.array(salt_bridge_percentage_avg)
+    salt_bridge_percentage_std = np.array(salt_bridge_percentage_std)
+    plt.bar(systems, salt_bridge_percentage_avg, yerr=salt_bridge_percentage_std, capsize=5)
     plt.ylim(0, 100)
     plt.ylabel("Occurrence of Arg561-Glu78 salt-bridge (%)")
-    plt.xticks(rotation=45, ha="center")
+    plt.xticks(rotation=45, ha="right")
     plt.grid()
     plt.tight_layout()
     plt.savefig("results/salt_bridge_percentage.png", dpi=600, bbox_inches="tight")
