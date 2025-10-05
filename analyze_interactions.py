@@ -244,18 +244,42 @@ if __name__ == "__main__":
         "RatSLCO2A1_LSN",
         "RatSLCO2A1_FEN",
         "RatSLCO2A1_TCW",
+        "RatSLCO2A1_PGF",
+        "RatSLCO2A1_FEN_flipped",
+        "RatSLCO2A1_P2E_flipped"
     ]
-    ligand_names = [system.split('_')[-1] for system in systems]
+
+    ligand_names = [
+        'P2E',
+        'ZLK',
+        'LSN',
+        'FEN',
+        'TCW',
+        'PGF',
+        'FEN_flipped',
+        'P2E_flipped'
+    ]
+
+    ligand_resnames = [
+        'P2E',
+        'ZLK',
+        'LSN',
+        'FEN',
+        'TCW',
+        'UGU',
+        'FEN',
+        'P2E'
+    ]
 
     # We need to GRO files just to get the correct residue numbering
     simulation_dir = "/home/bioc1870/SLCO2A1_simulations/"
-    gro_files = [f"{simulation_dir}{system}/production/rep_1/md.gro" for system in systems]
+    gro_files = [f"{simulation_dir}{system}/production/rep_1/sys.gro" for system in systems]
     tpr_files = [f"{simulation_dir}{system}/production/rep_1/md_system.tpr" for system in systems]
     xtc_files = [f"{simulation_dir}{system}/analysis/md_all_center.xtc" for system in systems]
 
     salt_bridge_percentage = []
 
-    for gro_file, tpr_file, xtc_file, system, ligand_name in zip(gro_files, tpr_files, xtc_files, systems, ligand_names):
+    for gro_file, tpr_file, xtc_file, system, ligand_name, ligand_resname in zip(gro_files, tpr_files, xtc_files, systems, ligand_names, ligand_resnames):
         print(f"\nProcessing {system} ...")
         assert os.path.exists(gro_file), f"File {gro_file} does not exist."
         assert os.path.exists(tpr_file), f"File {tpr_file} does not exist."
@@ -275,10 +299,10 @@ if __name__ == "__main__":
             df = fp.to_dataframe()
         else:
             print(f"Starting IFP calculation for {system}...")
-            if ligand_name not in ['FEN', 'LSN']:
-                ligand_sel = u.select_atoms(f"resname {ligand_name}")
+            if ligand_resname not in ['FEN', 'LSN']:
+                ligand_sel = u.select_atoms(f"resname {ligand_resname}")
             else:
-                ligand_sel = u.select_atoms(f"resname {ligand_name} and not name LP*")
+                ligand_sel = u.select_atoms(f"resname {ligand_resname} and not name LP*")
             protein_sel = u.select_atoms("protein and byres around 20.0 group ligand", ligand=ligand_sel)
             ligand_sel.chainIDs = np.array(['' for i in range(len(ligand_sel.chainIDs))])
             protein_sel.chainIDs = np.array(['' for i in range(len(protein_sel.chainIDs))])
