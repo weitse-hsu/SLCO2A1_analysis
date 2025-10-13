@@ -102,6 +102,14 @@ gmx rms -s ../../production/rep_1/md_system.tpr -f ../md_all_center.xtc -o bb_al
 ```
 In the interactive prompt, we selected Group 4 (`Backbone`) for least squared fit and Group 18 (`LIG_heavy`) for RMSD calculation.
 
+### SASA analysis
+To calculate the solvent accessible surface area (SASA) of the ligand, we run the following command:
+```
+gmx sasa -s ../../production/rep_1/md_system.tpr -f ../md_all_center.xtc -o sasa_ligand.xvg -n ../index.ndx
+``
+In the interactive prompt, we selected Group 18 (`LIG_heavy`) for SASA calculation.
+
+
 ## Reproducing results from the manuscript
 
 

@@ -183,7 +183,25 @@ def summarize_interactions(df, freq_threshold=0.5):
     return final_df
 
 
-def plot_interaction_frequencies(df, output_file):
+def summarize_interactions_with_error(df, freq_threshold=0.5, n_segments=3):
+    segments = np.array_split(df, n_segments)
+    segment_summaries = [summarize_interactions(segment, freq_threshold) for segment in segments]
+    
+    all_residues = set().union(*[df.index for df in segment_summaries])
+    all_columns = set().union(*[set(df.columns) for df in segment_summaries])
+    aligned = [df.reindex(index=all_residues, columns=all_columns).fillna(0) for df in segment_summaries]
+
+    stacked = np.stack([df.values for df in aligned], axis=0)  # shape: (n_segments, n_residues, n_interactions)
+    mean_array = np.mean(stacked, axis=0)
+    std_array = np.std(stacked, axis=0)
+
+    mean_df = pd.DataFrame(mean_array, index=sorted(all_residues), columns=sorted(all_columns))
+    std_df = pd.DataFrame(std_array, index=sorted(all_residues), columns=sorted(all_columns))
+
+    return mean_df, std_df
+
+
+def plot_interaction_frequencies(df, output_file, std_df=None):
     """
     Plots the interaction frequencies for a given DataFrame and saves the figure to the specified output file.
     """
@@ -206,7 +224,13 @@ def plot_interaction_frequencies(df, output_file):
     )
 
     # Plot the grouped bar chart with custom colors
-    ax = df.plot(kind="bar", figsize=(14, 6), width=0.8, color=[colors[col] for col in df.columns])
+    ax = df.plot(
+        kind="bar",
+        yerr=std_df if std_df is not None else None,
+        figsize=(14, 6),
+        width=0.8,
+        color=[colors[col] for col in df.columns]
+    )
 
     # Labels
     for label in ax.get_yticklabels():
@@ -220,6 +244,7 @@ def plot_interaction_frequencies(df, output_file):
     plt.legend(title="Interaction Type", bbox_to_anchor=(1.01, 1), loc="upper left", fontsize=18, title_fontsize=18, prop=fontprop)
     plt.tight_layout()
     ax.grid(axis='y')
+    plt.ylim(0, 100)
     plt.savefig(output_file, dpi=600, bbox_inches="tight")
 
 if __name__ == "__main__":
@@ -297,6 +322,7 @@ if __name__ == "__main__":
             print(f"IFP for {system} already exists, loading {ligand_name}_ifp_all.pkl ...")
             fp = fingerprint.Fingerprint.from_pickle(f"results/{ligand_name}/{ligand_name}_ifp_all.pkl")
             df = fp.to_dataframe()
+            assert len(df) >= 3000, f"IFP DataFrame for {system} has less than 3000 frames."
         else:
             print(f"Starting IFP calculation for {system}...")
             if ligand_resname not in ['FEN', 'LSN']:
@@ -314,6 +340,7 @@ if __name__ == "__main__":
             fp.to_pickle(f"results/{ligand_name}/{ligand_name}_ifp_all.pkl")
 
             df = fp.to_dataframe()
+            assert len(df) >= 3000, f"IFP DataFrame for {system} has less than 3000 frames."
             df.to_csv(f"results/{ligand_name}/{ligand_name}_ifp_all.tsv", sep="\t", index=False)
 
         # Step 3. Simplify ligand and protein names by removing possible chain IDs, e.g. "LIG.A" -> "LIG"
@@ -354,13 +381,17 @@ if __name__ == "__main__":
         # Step 3. Plot the frequencies of the interactions that occur in more than 50% of the frames
         print("Plotting interaction frequencies...")
         final_df = summarize_interactions(df, freq_threshold=0.5)
-        output_file = f"results/{ligand_name}/{ligand_name}_interaction_frequencies.png"
+        output_file = f"results/{ligand_name}/{ligand_name}_interaction_frequencies.pdf"
         plot_interaction_frequencies(final_df, output_file)
+
+        # mean_df, std_df = summarize_interactions_with_error(df, freq_threshold=0.5, n_segments=3)
+        # output_file = f"results/{ligand_name}/{ligand_name}_interaction_frequencies_with_error.pdf"
+        # plot_interaction_frequencies(mean_df, output_file, std_df=std_df)
 
         # Step 4. Plot the interaction timeseries
         print("Plotting interaction time series...")
         fp.plot_barcode()
-        output_file = f"results/{ligand_name}/{ligand_name}_barcode.png"
+        output_file = f"results/{ligand_name}/{ligand_name}_barcode.pdf"
         plt.savefig(output_file, dpi=600, bbox_inches="tight")
 
         # Step 5. Arg561-Glu78 Salt-bridge analysis
@@ -388,6 +419,6 @@ if __name__ == "__main__":
     plt.xticks(rotation=45, ha="right")
     plt.grid()
     plt.tight_layout()
-    plt.savefig("results/salt_bridge_percentage.png", dpi=600, bbox_inches="tight")
+    plt.savefig("results/salt_bridge_percentage.pdf", dpi=600, bbox_inches="tight")
 
     print(f"\nTime elapsed: {format_time(time.time() - t0)}.")
