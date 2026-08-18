@@ -247,6 +247,16 @@ def plot_interaction_frequencies(df, output_file, std_df=None):
     plt.ylim(0, 100)
     plt.savefig(output_file, dpi=600, bbox_inches="tight")
 
+    # print the interactions
+    print("\nInteraction frequencies (%):")
+    pd.set_option('display.max_rows', None)
+    print(df.round(2).to_string())
+    print()
+
+    # save the df to a tsv file
+    csv_file = output_file.replace(".pdf", ".csv")
+    df.round(2).to_csv(csv_file, sep="\t")
+
 if __name__ == "__main__":
     t0 = time.time()
 
